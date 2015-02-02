@@ -13,6 +13,9 @@ ARGS="$@"
 ARGS_COUNT="$#"
 USERAGENT="Kleber CLI client v${VERSION}"
 
+tmpdir=$(mktemp -dt kleber.XXXXXX)
+trap "rm -rf $tmpdir" EXIT TERM
+
 
 ### Helper functions based on NETBSD's rc.subr #########################################################################
 err(){
@@ -87,6 +90,7 @@ cmdline(){
             --lifetime)       args="${args}-t ";;
             --offset)         args="${args}-o ";;
             --limit)          args="${args}-k ";;
+            --web-link)          args="${args}-w ";;
             --config)         args="${args}-c ";;
             --help-config)    usage_config && exit 0;;
             --help)           args="${args}-h ";;
@@ -100,7 +104,7 @@ cmdline(){
 
     eval set -- $args
 
-    while getopts "nvhd:xu:lc:t:n:o:k:" OPTION
+    while getopts "nvhd:xu:lc:t:n:o:k:w" OPTION
     do
          case $OPTION in
          u)
@@ -123,6 +127,9 @@ cmdline(){
             ;;
          k)
             PAGINATION_LIMIT=$OPTARG
+            ;;
+         w)
+            WEB_LINK=1
             ;;
          v)
              VERBOSE=1
@@ -172,6 +179,7 @@ Commands:
 
 Options:
     -n | --name <name>              Name/Title for a paste
+    -w | --web-link                 Return web instead of API URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
     -o | --offset <offset>          Pagination offset (default: 0)
     -k | --limit <limit>            Pagination limit (default: 10)
@@ -207,21 +215,30 @@ paste(){
         lifetime="0"
     fi
 
+    headerfile=$(mktemp "${tmpdir}/header.XXXXXX")
     post_data="{\"content\": \"${content}\", \"name\": \"${name}\", \"lifetime\": \"${lifetime}\"}"
 
     read status_code redirect_url <<!
     $(curl -# --tlsv1 --ipv4 -L --write-out '%{http_code} %{url_effective}' \
         --user-agent "$USERAGENT" \
         --header "Content-Type: application/json" \
+        --dump-header "${headerfile}" \
         --header "$auth_header" \
         --data "$post_data" \
         --data-urlencode "$request_url"\
     )
 !
 
+    location="$(cat $headerfile|awk '/Location: (.*?)/ {print $2}')"
+    shortcut="$(basename "$location")"
+
     if [ "$status_code" -eq "201" ];then
-        info "Upload successful"
-        info "Get new paste at: ${redirect_url}"
+        debug "Upload successful"
+        if [ -n "$WEB_LINK" -a "$WEB_LINK" = "1" ];then
+            echo "${KLEBER_WEB_URL}/#/pastes/${shortcut}"
+        else
+            echo $location
+        fi
     else
         handle_api_error "$status_code"
     fi
@@ -242,16 +259,27 @@ upload(){
         err 1 "File size exceeds maximum size"
     fi
 
+    headerfile=$(mktemp "${tmpdir}/header.XXXXXX")
+
     read status_code redirect_url <<!
     $(curl -# --tlsv1 --ipv4 -L --write-out '%{http_code} %{url_effective}' \
         --user-agent "$USERAGENT" \
         --header "$auth_header" \
+        --dump-header "${headerfile}" \
         -F "file=@${file}" "$request_url"\
     )
 !
 
+    location="$(cat $headerfile|awk '/Location: (.*?)/ {print $2}')"
+    shortcut="$(basename "$location")"
+
     if [ "$status_code" -eq "201" ];then
         debug "Upload successful"
+        if [ -n "$WEB_LINK" -a "$WEB_LINK" = "1" ];then
+            echo "${KLEBER_WEB_URL}/#/pastes/${shortcut}"
+        else
+            echo $location
+        fi
     else
         handle_api_error "$status_code"
     fi
@@ -342,8 +370,6 @@ main(){
     elif [ -n "$COMMAND_LIST" ];then
         list
     elif [ "$ARGS_COUNT" -eq 0 ];then
-        tmpdir=$(mktemp -dt kleber.XXXXXX)
-        trap "rm -rf $tmpdir" EXIT TERM
         tmpfile=$(mktemp "${tmpdir}/data.XXXXXX")
         read_stdin "$tmpfile"
         upload "$tmpfile"
