@@ -13,8 +13,17 @@ ARGS="$@"
 ARGS_COUNT="$#"
 USERAGENT="Kleber CLI client v${VERSION}"
 
+set -e
+
 tmpdir=$(mktemp -dt kleber.XXXXXX)
 trap "rm -rf $tmpdir" EXIT TERM
+
+if ! which xclip > /dev/null;then
+    CLIPPER=0
+else
+    CLIPPER=1
+    CLIPPER_CMD="xclip -selection clipboard"
+fi
 
 
 ### Helper functions based on NETBSD's rc.subr #########################################################################
@@ -90,6 +99,7 @@ cmdline(){
             --lifetime)       args="${args}-t ";;
             --offset)         args="${args}-o ";;
             --limit)          args="${args}-k ";;
+            --clipboard)      args="${args}-p ";;
             --web-link)          args="${args}-w ";;
             --config)         args="${args}-c ";;
             --help-config)    usage_config && exit 0;;
@@ -104,7 +114,7 @@ cmdline(){
 
     eval set -- $args
 
-    while getopts "nvhd:xu:lc:t:n:o:k:w" OPTION
+    while getopts "nvhd:xu:lc:t:n:o:k:wp" OPTION
     do
          case $OPTION in
          u)
@@ -130,6 +140,9 @@ cmdline(){
             ;;
          w)
             WEB_LINK=1
+            ;;
+         p)
+            KLEBER_CLIPBOARD_DEFAULT=1
             ;;
          v)
              VERBOSE=1
@@ -162,10 +175,24 @@ load_config(){
         err 1 "Cannot read config file ${config}"
     fi
 
+
+    if [ -n "$KLEBER_API_KEY" ];then
+        err 1 "API key not found. Pleaase put it in the config file."
+    fi
+
     . $config
 
     return 0
 }
+
+read_stdin() {
+    temp_file=$1
+	if tty -s; then
+		printf "%s\n" "^C to exit, ^D to send"
+	fi
+	cat > "$temp_file"
+}
+
 
 help() {
 	cat <<!
@@ -190,13 +217,6 @@ Options:
 !
 }
 
-read_stdin() {
-    temp_file=$1
-	if tty -s; then
-		printf "%s\n" "^C to exit, ^D to send"
-	fi
-	cat > "$temp_file"
-}
 
 ### Kleber functions ###################################################################################################
 paste(){
@@ -235,9 +255,12 @@ paste(){
     if [ "$status_code" -eq "201" ];then
         debug "Upload successful"
         if [ -n "$WEB_LINK" -a "$WEB_LINK" = "1" ];then
-            echo "${KLEBER_WEB_URL}/#/pastes/${shortcut}"
+            location="${KLEBER_WEB_URL}/#/pastes/${shortcut}"
+            echo "$location"
+            copy_to_clipper "$location"
         else
-            echo $location
+            echo "$location"
+            copy_to_clipper "$location"
         fi
     else
         handle_api_error "$status_code"
@@ -276,9 +299,12 @@ upload(){
     if [ "$status_code" -eq "201" ];then
         debug "Upload successful"
         if [ -n "$WEB_LINK" -a "$WEB_LINK" = "1" ];then
-            echo "${KLEBER_WEB_URL}/#/pastes/${shortcut}"
+            location="${KLEBER_WEB_URL}/#/pastes/${shortcut}"
+            echo "$location"
+            copy_to_clipper "$location"
         else
-            echo $location
+            echo "$location"
+            copy_to_clipper "$location"
         fi
     else
         handle_api_error "$status_code"
@@ -291,13 +317,15 @@ list(){
     offset="0"
     limit="10"
     auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
-    request_url="${KLEBER_API_URL}/pastes?offset=${offset}&limit=${limit}"
 
     if [ -n "$PAGINATION_OFFSET" ];then
         offset="$PAGINATION_OFFSET"
-    elif [ -n "$PAGINATION_LIMIT" ];then
+    fi
+    if [ -n "$PAGINATION_LIMIT" ];then
         limit="$PAGINATION_LIMIT"
     fi
+
+    request_url="${KLEBER_API_URL}/pastes?offset=${offset}&limit=${limit}"
 
     curl_out=$(curl --tlsv1 --ipv4 -L -s --user-agent "$USERAGENT" --header "$auth_header" "$request_url")
 
@@ -325,6 +353,15 @@ delete(){
     return 0
 }
 
+copy_to_clipper(){
+    location=$1
+
+    if checkyesno "$CLIPPER" && checkyesno "$KLEBER_CLIPBOARD_DEFAULT";then
+        echo "$location" | eval "${CLIPPER_CMD}" || return 1
+    fi
+    return 0
+}
+
 handle_api_error(){
     status_code=$1
 
@@ -344,7 +381,7 @@ handle_api_error(){
         429)
             err 1 "Rate limit reached. Please try again later"
             ;;
-        500)
+        500)p
             err 1 "An error occured. Please try again later"
             ;;
         503)
