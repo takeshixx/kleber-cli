@@ -1,11 +1,19 @@
 #!/bin/sh
-# Kleber command line client
-
-VERSION="0.0.1"
+# --
+# Kleber (kleber.io) command line client
+#
+# Version:      v0.0.1-alpha
+# Home:         https://github.com/takeshixx/kleber-cli
+# License:      GPLv3 (see LICENSE for full license text)
+#
+#
+# Usage:        kleber --help
+# --
 
 set -e
 
 ### Global variables (DO NOT CHANGE) ###################################################################################
+VERSION="0.0.1-alpha"
 DEBUG=0
 KLEBER_WEB_URL="http://kleber.io"
 KLEBER_API_URL="${KLEBER_WEB_URL}/api"
