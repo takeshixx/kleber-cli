@@ -1,6 +1,9 @@
 #!/bin/sh
+# Kleber command line client
 
 VERSION="0.0.1"
+
+set -e
 
 ### Global variables (DO NOT CHANGE) ###################################################################################
 DEBUG=0
@@ -9,48 +12,46 @@ KLEBER_API_URL="${KLEBER_WEB_URL}/api"
 KLEBER_MAX_SIZE=262144000
 KLEBER_RCFILE=~/.kleberrc
 
-ARGS="$@"
+ARGS="$*"
 ARGS_COUNT="$#"
 USERAGENT="Kleber CLI client v${VERSION}"
+CLIPPER=
+CLIPPER_CMD=
+TMPDIR=$(mktemp -dt kleber.XXXXXX)
 
-set -e
-
-tmpdir=$(mktemp -dt kleber.XXXXXX)
-trap "rm -rf $tmpdir" EXIT TERM
-
-if ! which xclip > /dev/null;then
-    CLIPPER=0
-else
-    CLIPPER=1
-    CLIPPER_CMD="xclip -selection clipboard"
-fi
+trap "rm -rf '$TMPDIR'" EXIT TERM
 
 
 ### Helper functions based on NETBSD's rc.subr #########################################################################
 err(){
     exitval=$1
     shift
-    echo 1>&2 "$0: ERROR: $*"
-    exit $exitval
+    echo 1>&2 "ERROR: $*"
+    exit "$exitval"
 }
 
 warn(){
-    echo 1>&2 "$0: WARNING: $*"
+    echo 1>&2 "WARNING: $*"
 }
 
 info(){
-    echo "$0: INFO: $*"
+    if [ -z $QUIET ] || checkseyno $QUIET;then
+        echo -e "$*"
+    fi
 }
 
 debug(){
     case $DEBUG in
     [Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|1)
-        echo 1>&2 "$0: DEBUG: $*"
+        echo 1>&2 "DEBUG: $*"
         ;;
     esac
 }
 
 checkyesno(){
+    if [ -z "$1" ];then
+        return 1
+    fi
     eval _value=\$${1}
     debug "checkyesno: $1 is set to $_value."
     case $_value in
@@ -63,7 +64,6 @@ checkyesno(){
         return 1
         ;;
     *)
-        warn "\$${1} is not set properly - see rc.conf(5)."
         return 1
         ;;
     esac
@@ -71,27 +71,31 @@ checkyesno(){
 
 
 ### General system functions ###########################################################################################
-check_kernel(){
-    if [ "$(uname -s)" != "FreeBSD" ]; then
-        echo "[e] This script currently only supportes FreeBSD"
-        exit 1
-    fi
-}
-
 check_euid(){
     if [ "$(id -u)" = 0 ]; then
       err 1 "This script should not run with superuser privileges"
     fi
 }
 
-# Parsing command line arguments
+check_dependencies(){
+    if ! which curl >/dev/null;then
+        err 1 "Kleber CLI needs curl, please install it"
+    fi
+
+    if which xclip >/dev/null;then
+        CLIPPER=1
+        CLIPPER_CMD="xclip -selection clipboard"
+    else
+        CLIPPER=0
+    fi
+}
+
 cmdline(){
     arg=
     for arg
     do
         delim=""
         case "$arg" in
-            #translate --gnu-long-options to -g (short options)
             --upload)         args="${args}-u ";;
             --delete)         args="${args}-d ";;
             --list)           args="${args}-l ";;
@@ -100,21 +104,22 @@ cmdline(){
             --offset)         args="${args}-o ";;
             --limit)          args="${args}-k ";;
             --clipboard)      args="${args}-p ";;
-            --web-link)          args="${args}-w ";;
+            --web-link)       args="${args}-w ";;
             --config)         args="${args}-c ";;
-            --help-config)    usage_config && exit 0;;
             --help)           args="${args}-h ";;
-            --verbose)        args="${args}-v ";;
+            --quiet)          args="${args}-q ";;
             --debug)          args="${args}-x ";;
-            #pass through anything else
-            *) [[ "${arg:0:1}" = "-" ]] || delim="\""
+            *)
+                if [ ! "$(expr substr "${arg}" 0 1)" = "-" ];then
+                    delim="\""
+                fi
                 args="${args}${delim}${arg}${delim} ";;
         esac
     done
 
     eval set -- $args
 
-    while getopts "nvhd:xu:lc:t:n:o:k:wp" OPTION
+    while getopts "whlpd:xu:c:t:n:o:k:" OPTION
     do
          case $OPTION in
          u)
@@ -144,9 +149,9 @@ cmdline(){
          p)
             KLEBER_CLIPBOARD_DEFAULT=1
             ;;
-         v)
-             VERBOSE=1
-             ;;
+         q)
+            QUIET=1
+            ;;
          h)
              help
              exit 0
@@ -160,8 +165,6 @@ cmdline(){
              ;;
         esac
     done
-
-    return 0
 }
 
 load_config(){
@@ -171,7 +174,7 @@ load_config(){
         config=$KLEBER_RCFILE
     fi
 
-    if [ ! -r $config -o ! -f $config ];then
+    if [ ! -r $config ] || [ ! -f $config ];then
         err 1 "Cannot read config file ${config}"
     fi
 
@@ -181,8 +184,6 @@ load_config(){
     fi
 
     . $config
-
-    return 0
 }
 
 read_stdin() {
@@ -212,67 +213,19 @@ Options:
     -k | --limit <limit>            Pagination limit (default: 10)
     -h | --help                     Show this help
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
-    -v | --verbose                  Print verbose output
+    -q | --quiet                    Suppress output
     -x | --debug                    Show debug output
 !
 }
 
 
 ### Kleber functions ###################################################################################################
-paste(){
-    content=$1
-    auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
-    request_url="${KLEBER_API_URL}/pastes}"
-    if [ -n "$UPLOAD_NAME" ];then
-        name="$UPLOAD_NAME"
-    else
-        name=""
-    fi
-
-    if [ -n "$UPLOAD_LIFETIME" ];then
-        lifetime="$UPLOAD_LIFETIME"
-    else
-        lifetime="0"
-    fi
-
-    headerfile=$(mktemp "${tmpdir}/header.XXXXXX")
-    post_data="{\"content\": \"${content}\", \"name\": \"${name}\", \"lifetime\": \"${lifetime}\"}"
-
-    read status_code redirect_url <<!
-    $(curl -# --tlsv1 --ipv4 -L --write-out '%{http_code} %{url_effective}' \
-        --user-agent "$USERAGENT" \
-        --header "Content-Type: application/json" \
-        --dump-header "${headerfile}" \
-        --header "$auth_header" \
-        --data "$post_data" \
-        --data-urlencode "$request_url"\
-    )
-!
-
-    location="$(cat $headerfile|awk '/Location: (.*?)/ {print $2}')"
-    shortcut="$(basename "$location")"
-
-    if [ "$status_code" -eq "201" ];then
-        debug "Upload successful"
-        if [ -n "$WEB_LINK" -a "$WEB_LINK" = "1" ];then
-            location="${KLEBER_WEB_URL}/#/pastes/${shortcut}"
-            echo "$location"
-            copy_to_clipper "$location"
-        else
-            echo "$location"
-            copy_to_clipper "$location"
-        fi
-    else
-        handle_api_error "$status_code"
-    fi
-
-    return 0
-}
-
 upload(){
     file=$1
     auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
     request_url="${KLEBER_API_URL}/pastes"
+    headerfile=$(mktemp "${TMPDIR}/header.XXXXXX")
+    filestr="file=@${file}"
 
     if [ ! -r "$file" ];then
         err 1 "Cannot read file ${file}"
@@ -282,35 +235,37 @@ upload(){
         err 1 "File size exceeds maximum size"
     fi
 
-    headerfile=$(mktemp "${tmpdir}/header.XXXXXX")
+    if [ -n "$UPLOAD_NAME" ];then
+        filestr="${filestr};filename=${UPLOAD_NAME}"
+    fi
 
-    read status_code redirect_url <<!
-    $(curl -# --tlsv1 --ipv4 -L --write-out '%{http_code} %{url_effective}' \
+    curl_out=$(curl --progress-bar --tlsv1 --ipv4 -L --write-out '%{http_code} %{url_effective}' \
         --user-agent "$USERAGENT" \
         --header "$auth_header" \
+        --header "Expect:" \
         --dump-header "${headerfile}" \
-        -F "file=@${file}" "$request_url"\
+        -F "${filestr}" \
+        "$request_url"\
     )
-!
 
-    location="$(cat $headerfile|awk '/Location: (.*?)/ {print $2}')"
-    shortcut="$(basename "$location")"
+    status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {print $2}' ${headerfile})"
 
-    if [ "$status_code" -eq "201" ];then
+    if [ -n "$status_code" ] && [ "$status_code" -eq "201" ];then
         debug "Upload successful"
-        if [ -n "$WEB_LINK" -a "$WEB_LINK" = "1" ];then
+        location="$(awk '/Location: (.*?)/ {print $2}' ${headerfile})"
+        shortcut="$(basename "$location")"
+
+        if checkyesno "$WEB_LINK";then
             location="${KLEBER_WEB_URL}/#/pastes/${shortcut}"
-            echo "$location"
+            info "$location"
             copy_to_clipper "$location"
         else
-            echo "$location"
+            info "${location}"
             copy_to_clipper "$location"
         fi
     else
         handle_api_error "$status_code"
     fi
-
-    return 0
 }
 
 list(){
@@ -326,19 +281,15 @@ list(){
     fi
 
     request_url="${KLEBER_API_URL}/pastes?offset=${offset}&limit=${limit}"
-
     curl_out=$(curl --tlsv1 --ipv4 -L -s --user-agent "$USERAGENT" --header "$auth_header" "$request_url")
 
-    echo $curl_out
-
-    return 0
+    echo "$curl_out"
 }
 
 delete(){
     shortcut=$1
     auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
     request_url="${KLEBER_API_URL}/pastes/${shortcut}"
-
     status_code=$(curl -s -X DELETE --tlsv1 --ipv4 -L \
         --write-out '%{http_code}' \
         --header "$auth_header" "$request_url" |grep -Po "[0-9]{3}$"
@@ -349,17 +300,18 @@ delete(){
     else
         handle_api_error "$status_code"
     fi
-
-    return 0
 }
 
 copy_to_clipper(){
     location=$1
 
-    if checkyesno "$CLIPPER" && checkyesno "$KLEBER_CLIPBOARD_DEFAULT";then
-        echo "$location" | eval "${CLIPPER_CMD}" || return 1
+    if checkyesno "$KLEBER_CLIPBOARD_DEFAULT";then
+        if checkyesno "$CLIPPER";then
+            echo "$location" | eval "${CLIPPER_CMD}" || return 1
+        else
+            warn "xclip not found"
+        fi
     fi
-    return 0
 }
 
 handle_api_error(){
@@ -377,6 +329,9 @@ handle_api_error(){
             ;;
         404)
             err 1 "Resource not found"
+            ;;
+        413)
+            err 1 "Request entity too large"
             ;;
         429)
             err 1 "Rate limit reached. Please try again later"
@@ -397,6 +352,7 @@ handle_api_error(){
 ### Main application logic #############################################################################################
 main(){
     check_euid
+    check_dependencies
     cmdline $ARGS
     load_config
 
@@ -406,8 +362,8 @@ main(){
         delete "$COMMAND_DELETE"
     elif [ -n "$COMMAND_LIST" ];then
         list
-    elif [ "$ARGS_COUNT" -eq 0 ];then
-        tmpfile=$(mktemp "${tmpdir}/data.XXXXXX")
+    else
+        tmpfile=$(mktemp "${TMPDIR}/data.XXXXXX")
         read_stdin "$tmpfile"
         upload "$tmpfile"
     fi
