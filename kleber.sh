@@ -3,7 +3,7 @@
 # Kleber (kleber.io) command line client
 #
 # Version:      v0.0.1-alpha
-# Home:         https://github.com/takeshixx/kleber-cli
+# Home:         https://github.com/kleber-io/kleber-cli
 # License:      GPLv3 (see LICENSE for full license text)
 #
 #
