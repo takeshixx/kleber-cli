@@ -2,7 +2,7 @@
 # --
 # Kleber (kleber.io) command line client
 #
-# Version:      v0.0.1-alpha
+# Version:      v0.1.0-alpha
 # Home:         https://github.com/kleber-io/kleber-cli
 # License:      GPLv3 (see LICENSE for full license text)
 #
@@ -13,9 +13,9 @@
 set -e
 
 ### Global variables (DO NOT CHANGE) ###################################################################################
-VERSION="0.0.1-alpha"
+VERSION="0.1.0-alpha"
 DEBUG=0
-KLEBER_WEB_URL="http://kleber.io"
+KLEBER_WEB_URL="https://kleber.io"
 KLEBER_API_URL="${KLEBER_WEB_URL}/api"
 KLEBER_MAX_SIZE=262144000
 KLEBER_RCFILE=~/.kleberrc
@@ -258,7 +258,7 @@ upload(){
 
     status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {print $2}' ${headerfile})"
 
-    if [ -n "$status_code" ] && [ "$status_code" -eq "201" ];then
+    if [ -n "$status_code" ] && [ "$status_code" = "201" ];then
         debug "Upload successful"
         location="$(awk '/Location: (.*?)/ {print $2}' ${headerfile})"
         shortcut="$(basename "$location")"
