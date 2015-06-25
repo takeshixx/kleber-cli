@@ -4,7 +4,7 @@ This is the official command line client for Kleber. It is written in pure shell
 ## Installation
 
 ```
-$ git clone https://github.com/takeshixx/kleber-cli.git
+$ git clone https://github.com/kleber-io/kleber-cli.git
 $ cd kleber-cli
 # make install
 ```
@@ -47,4 +47,4 @@ $ kleber --help
 ```
 
 ## Contribute
-Feel free to open [issues](https://github.com/takeshixx/kleber-cli/issues) or create [pull requests](https://github.com/takeshixx/kleber-cli/pulls). Contributions are highly appreciated!
+Feel free to open [issues](https://github.com/kleber-io/kleber-cli/issues) or create [pull requests](https://github.com/kleber-io/kleber-cli/pulls). Contributions are highly appreciated!
