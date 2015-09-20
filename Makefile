@@ -6,5 +6,5 @@ install:
 		install -m755 kleber.sh $(DESTDIR)$(BINDIR)/kleber
 
 
-uninstall:
+deinstall:
 		rm -f $(DESTDIR)$(BINDIR)/kleber

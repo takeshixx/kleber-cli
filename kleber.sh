@@ -2,7 +2,7 @@
 # --
 # Kleber (kleber.io) command line client
 #
-# Version:      v0.1.0-alpha
+# Version:      v0.2.0-alpha
 # Home:         https://github.com/kleber-io/kleber-cli
 # License:      GPLv3 (see LICENSE for full license text)
 #
@@ -114,6 +114,7 @@ cmdline(){
             --clipboard)      args="${args}-p ";;
             --web-link)       args="${args}-w ";;
             --config)         args="${args}-c ";;
+            --curl-config)    args="${args}-C ";;
             --help)           args="${args}-h ";;
             --quiet)          args="${args}-q ";;
             --debug)          args="${args}-x ";;
@@ -127,7 +128,7 @@ cmdline(){
 
     eval set -- $args
 
-    while getopts "whlpd:xu:c:t:n:o:k:" OPTION
+    while getopts "whlpd:xu:c:Ct:n:o:k:" OPTION
     do
          case $OPTION in
          u)
@@ -221,6 +222,7 @@ Options:
     -k | --limit <limit>            Pagination limit (default: 10)
     -h | --help                     Show this help
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
+    -C | --curl-config              Read curl config from stdin
     -q | --quiet                    Suppress output
     -x | --debug                    Show debug output
 !
@@ -247,13 +249,13 @@ upload(){
         filestr="${filestr};filename=${UPLOAD_NAME}"
     fi
 
-    curl_out=$(curl --progress-bar --tlsv1 --ipv4 -L --write-out '%{http_code} %{url_effective}' \
+    curl_out=$(curl --progress-bar --tlsv1 -L --write-out '%{http_code} %{url_effective}' \
         --user-agent "$USERAGENT" \
         --header "$auth_header" \
         --header "Expect:" \
         --dump-header "${headerfile}" \
         -F "${filestr}" \
-        "$request_url"\
+        "$request_url" \
     )
 
     status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {print $2}' ${headerfile})"
@@ -289,7 +291,7 @@ list(){
     fi
 
     request_url="${KLEBER_API_URL}/pastes?offset=${offset}&limit=${limit}"
-    curl_out=$(curl --tlsv1 --ipv4 -L -s --user-agent "$USERAGENT" --header "$auth_header" "$request_url")
+    curl_out=$(curl "$CURL_CONFIG_STDIN" --tlsv1 --ipv4 -L -s --user-agent "$USERAGENT" --header "$auth_header" "$request_url")
 
     echo "$curl_out"
 }
@@ -298,7 +300,7 @@ delete(){
     shortcut=$1
     auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
     request_url="${KLEBER_API_URL}/pastes/${shortcut}"
-    status_code=$(curl -s -X DELETE --tlsv1 --ipv4 -L \
+    status_code=$(curl "$CURL_CONFIG_STDIN" -s -X DELETE --tlsv1 --ipv4 -L \
         --write-out '%{http_code}' \
         --header "$auth_header" "$request_url" |grep -Po "[0-9]{3}$"
     )
