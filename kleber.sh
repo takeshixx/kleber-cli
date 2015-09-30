@@ -9,28 +9,27 @@
 #
 # Usage:        kleber --help
 # --
-
 set -e
 
-### Global variables (DO NOT CHANGE) ###################################################################################
-VERSION="0.1.0-alpha"
+### Global variables (DO NOT CHANGE) ###
+VERSION="0.2.0-alpha"
 DEBUG=0
 KLEBER_WEB_URL="https://kleber.io"
 KLEBER_API_URL="${KLEBER_WEB_URL}/api"
 KLEBER_MAX_SIZE=262144000
 KLEBER_RCFILE=~/.kleberrc
-
 ARGS="$*"
 ARGS_COUNT="$#"
 USERAGENT="Kleber CLI client v${VERSION}"
 CLIPPER=
 CLIPPER_CMD=
+UPLOAD_LIFETIME=604800
+SECURE_URL=0
+NO_LEXER=0
 TMPDIR=$(mktemp -dt kleber.XXXXXX)
-
 trap "rm -rf '$TMPDIR'" EXIT TERM
 
-
-### Helper functions based on NETBSD's rc.subr #########################################################################
+### Helper functions based on NETBSD's rc.subr ###
 err(){
     exitval=$1
     shift
@@ -77,8 +76,7 @@ checkyesno(){
     esac
 }
 
-
-### General system functions ###########################################################################################
+### General system functions ###
 check_euid(){
     if [ "$(id -u)" = 0 ]; then
       err 1 "This script should not run with superuser privileges"
@@ -112,6 +110,7 @@ cmdline(){
             --offset)         args="${args}-o ";;
             --limit)          args="${args}-k ";;
             --clipboard)      args="${args}-p ";;
+            --secure-url)     args="${args}-s ";;
             --web-link)       args="${args}-w ";;
             --config)         args="${args}-c ";;
             --curl-config)    args="${args}-C ";;
@@ -128,7 +127,7 @@ cmdline(){
 
     eval set -- $args
 
-    while getopts "whlpd:xu:c:Ct:n:o:k:" OPTION
+    while getopts "whlpd:xu:c:Ct:n:o:k:sg" OPTION
     do
          case $OPTION in
          u)
@@ -152,11 +151,17 @@ cmdline(){
          k)
             PAGINATION_LIMIT=$OPTARG
             ;;
+         s)
+            SECURE_URL=1
+            ;;
          w)
             WEB_LINK=1
             ;;
          p)
             KLEBER_CLIPBOARD_DEFAULT=1
+            ;;
+         g)
+            NO_LEXER=1
             ;;
          q)
             QUIET=1
@@ -217,9 +222,11 @@ Commands:
 Options:
     -n | --name <name>              Name/Title for a paste
     -w | --web-link                 Return web instead of API URL
+    -s | --secure-url               Create with secure URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
     -o | --offset <offset>          Pagination offset (default: 0)
     -k | --limit <limit>            Pagination limit (default: 10)
+    -g | --no-lexer                 Don't guess a lexer for text files
     -h | --help                     Show this help
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
@@ -229,7 +236,7 @@ Options:
 }
 
 
-### Kleber functions ###################################################################################################
+### Kleber functions ###
 upload(){
     file=$1
     auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
@@ -249,13 +256,28 @@ upload(){
         filestr="${filestr};filename=${UPLOAD_NAME}"
     fi
 
+    if checkyesno "$SECURE_URL";then
+        SECURE_URL="secureUrl=true"
+    else
+        SECURE_URL="secureUrl=false"
+    fi
+
+    if checkyesno "$NO_LEXER";then
+        NO_LEXER="lexer="
+    else
+        NO_LEXER="lexer=auto"
+    fi
+
     curl_out=$(curl --progress-bar --tlsv1 -L --write-out '%{http_code} %{url_effective}' \
         --user-agent "$USERAGENT" \
         --header "$auth_header" \
         --header "Expect:" \
-        --dump-header "${headerfile}" \
-        -F "${filestr}" \
-        "$request_url" \
+        --dump-header "$headerfile" \
+        --form "$SECURE_URL" \
+        --form "lifetime=${UPLOAD_LIFETIME}" \
+        --form "$NO_LEXER" \
+        --form "${filestr}" \
+        "$request_url"
     )
 
     status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {print $2}' ${headerfile})"
@@ -359,7 +381,7 @@ handle_api_error(){
 }
 
 
-### Main application logic #############################################################################################
+### Main application logic ###
 main(){
     check_euid
     check_dependencies
