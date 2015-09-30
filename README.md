@@ -1,4 +1,4 @@
-# Kleber CLI Client
+# Kleber CLI
 This is the official command line client for Kleber. It is written in pure shell script and aims to be fully POSIX compliant. The main purpose is to provide a command line interface where the basic API features are implemented. Uploading of pure text as well as data/binary is supported from either files or STDIN.
 
 ## Installation
@@ -46,7 +46,7 @@ Options:
     -x | --debug                    Show debug output
 ```
 
-##### Uploading a file
+### Uploading a file
 
 ```
 $ kleber --upload /bin/pwd

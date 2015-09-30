@@ -2,7 +2,7 @@
 # --
 # Kleber (kleber.io) command line client
 #
-# Version:      v0.2.0-alpha
+# Version:      v0.3.1-alpha
 # Home:         https://github.com/kleber-io/kleber-cli
 # License:      GPLv3 (see LICENSE for full license text)
 #
@@ -12,7 +12,7 @@
 set -e
 
 ### Global variables (DO NOT CHANGE) ###
-VERSION="0.2.0-alpha"
+VERSION="0.3.1-alpha"
 DEBUG=0
 KLEBER_WEB_URL="https://kleber.io"
 KLEBER_API_URL="${KLEBER_WEB_URL}/api"
