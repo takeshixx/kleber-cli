@@ -33,15 +33,15 @@ Commands:
 
 Options:
     -n | --name <name>              Name/Title for a paste
-    -w | --web-link                 Return web instead of API URL
     -s | --secure-url               Create with secure URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
     -o | --offset <offset>          Pagination offset (default: 0)
     -k | --limit <limit>            Pagination limit (default: 10)
     -g | --no-lexer                 Don't guess a lexer for text files
-    -h | --help                     Show this help
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
+    -a | --api-url                  Return web instead of API URL
+    -h | --help                     Show this help
     -q | --quiet                    Suppress output
     -x | --debug                    Show debug output
 ```
