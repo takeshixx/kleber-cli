@@ -40,7 +40,7 @@ Options:
     -g | --no-lexer                 Don't guess a lexer for text files
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
-    -a | --api-url                  Return web instead of API URL
+    -a | --api-url                  Return API URL
     -h | --help                     Show this help
     -q | --quiet                    Suppress output
     -x | --debug                    Show debug output
