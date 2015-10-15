@@ -2,7 +2,7 @@
 # --
 # Kleber (kleber.io) command line client
 #
-# Version:      v0.3.1-alpha
+# Version:      v0.3.2
 # Home:         https://github.com/kleber-io/kleber-cli
 # License:      GPLv3 (see LICENSE for full license text)
 #
@@ -12,24 +12,23 @@
 set -e
 
 ### Global variables (DO NOT CHANGE) ###
-VERSION="0.3.1-alpha"
+VERSION="0.3.2"
 DEBUG=0
 KLEBER_WEB_URL="https://kleber.io"
 KLEBER_API_URL="${KLEBER_WEB_URL}/api"
 KLEBER_MAX_SIZE=262144000
 KLEBER_RCFILE=~/.kleberrc
 ARGS="$*"
-ARGS_COUNT="$#"
 USERAGENT="Kleber CLI client v${VERSION}"
 CLIPPER=
 CLIPPER_CMD=
 UPLOAD_LIFETIME=604800
 SECURE_URL=0
 NO_LEXER=0
+API_URL=0
 TMPDIR=$(mktemp -dt kleber.XXXXXX)
 trap "rm -rf '$TMPDIR'" EXIT TERM
 
-### Helper functions based on NETBSD's rc.subr ###
 err(){
     exitval=$1
     shift
@@ -42,7 +41,7 @@ warn(){
 }
 
 info(){
-    if [ -z $QUIET ] || checkseyno $QUIET;then
+    if [ -z "$QUIET" ] || checkseyno "$QUIET";then
         echo -e "$*"
     fi
 }
@@ -76,7 +75,6 @@ checkyesno(){
     esac
 }
 
-### General system functions ###
 check_euid(){
     if [ "$(id -u)" = 0 ]; then
       err 1 "This script should not run with superuser privileges"
@@ -85,7 +83,7 @@ check_euid(){
 
 check_dependencies(){
     if ! which curl >/dev/null;then
-        err 1 "Kleber CLI needs curl, please install it"
+        err 1 "Kleber CLI needs curl, please install it."
     fi
 
     if which xclip >/dev/null;then
@@ -111,9 +109,9 @@ cmdline(){
             --limit)          args="${args}-k ";;
             --clipboard)      args="${args}-p ";;
             --secure-url)     args="${args}-s ";;
-            --web-link)       args="${args}-w ";;
             --config)         args="${args}-c ";;
             --curl-config)    args="${args}-C ";;
+            --api-url)        args="${args}-a ";;
             --help)           args="${args}-h ";;
             --quiet)          args="${args}-q ";;
             --debug)          args="${args}-x ";;
@@ -125,9 +123,9 @@ cmdline(){
         esac
     done
 
-    eval set -- $args
+    eval set -- "$args"
 
-    while getopts "whlpd:xu:c:Ct:n:o:k:sg" OPTION
+    while getopts "hlpd:xu:c:Ct:n:o:k:sga" OPTION
     do
          case $OPTION in
          u)
@@ -154,9 +152,6 @@ cmdline(){
          s)
             SECURE_URL=1
             ;;
-         w)
-            WEB_LINK=1
-            ;;
          p)
             KLEBER_CLIPBOARD_DEFAULT=1
             ;;
@@ -167,16 +162,23 @@ cmdline(){
             QUIET=1
             ;;
          h)
-             help
-             exit 0
-             ;;
+            help
+            exit 0
+            ;;
          x)
-             DEBUG=1
-             set -x
-             ;;
+            DEBUG=1
+            set -x
+            ;;
          c)
-             CONFIG_FILE=$OPTARG
-             ;;
+            CONFIG_FILE=$OPTARG
+            ;;
+         a)
+            API_URL=1
+            ;;
+         *)
+            help
+            exit 1
+            ;;
         esac
     done
 }
@@ -208,7 +210,6 @@ read_stdin() {
 	cat > "$temp_file"
 }
 
-
 help() {
 	cat <<!
 Kleber command line client
@@ -221,15 +222,15 @@ Commands:
 
 Options:
     -n | --name <name>              Name/Title for a paste
-    -w | --web-link                 Return web instead of API URL
     -s | --secure-url               Create with secure URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
     -o | --offset <offset>          Pagination offset (default: 0)
     -k | --limit <limit>            Pagination limit (default: 10)
     -g | --no-lexer                 Don't guess a lexer for text files
-    -h | --help                     Show this help
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
+    -a | --api-url                  Return web instead of API URL
+    -h | --help                     Show this help
     -q | --quiet                    Suppress output
     -x | --debug                    Show debug output
 !
@@ -285,16 +286,16 @@ upload(){
     if [ -n "$status_code" ] && [ "$status_code" = "201" ];then
         debug "Upload successful"
         location="$(awk '/Location: (.*?)/ {print $2}' ${headerfile})"
+
+        if checkyesno "$API_URL";then
+            shortcut="$(echo $location | awk -F/ '{print $4}')"
+            location="${KLEBER_API_URL}/pastes/${shortcut}"
+        fi
+
         shortcut="$(basename "$location")"
 
-        if checkyesno "$WEB_LINK";then
-            location="${KLEBER_WEB_URL}/#/pastes/${shortcut}"
-            info "$location"
-            copy_to_clipper "$location"
-        else
-            info "${location}"
-            copy_to_clipper "$location"
-        fi
+        info "${location}"
+        copy_to_clipper "$location"
     else
         handle_api_error "$status_code"
     fi
@@ -313,7 +314,7 @@ list(){
     fi
 
     request_url="${KLEBER_API_URL}/pastes?offset=${offset}&limit=${limit}"
-    curl_out=$(curl "$CURL_CONFIG_STDIN" --tlsv1 --ipv4 -L -s --user-agent "$USERAGENT" --header "$auth_header" "$request_url")
+    curl_out=$(curl "$CURL_CONFIG_STDIN" --tlsv1 -L -s --user-agent "$USERAGENT" --header "$auth_header" "$request_url")
 
     echo "$curl_out"
 }
@@ -375,7 +376,7 @@ handle_api_error(){
             err 1 "API currently not available. Please try again later"
             ;;
         *)
-            err 1 "Unknown error"
+            err 1 "Unknown API error"
             ;;
     esac
 }
