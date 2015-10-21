@@ -10,7 +10,7 @@
 # Usage:        kleber --help
 # --
 set -e
-VERSION="0.4.1"
+VERSION="0.5.1"
 DEBUG=0
 KLEBER_WEB_URL="https://kleber.io"
 KLEBER_API_URL="${KLEBER_WEB_URL}/api"
@@ -24,6 +24,9 @@ UPLOAD_LIFETIME=604800
 SECURE_URL=0
 NO_LEXER=0
 API_URL=0
+API_URL_EXT=0
+USE_TOR=0
+TOR_PROXY="127.0.0.1:9150"
 EXIFTOOL=0
 TMPDIR=$(mktemp -dt kleber.XXXXXX)
 trap "rm -rf '$TMPDIR'" EXIT TERM
@@ -41,7 +44,7 @@ warn(){
 
 info(){
     if [ -z "$QUIET" ] || checkseyno "$QUIET";then
-        echo -e "$*"
+        echo "$*"
     fi
 }
 
@@ -77,7 +80,7 @@ checkyesno(){
 check_euid(){
     if [ "$(id -u)" = 0 ]; then
       warn "You should not run this with superuser privileges!"
-      read
+      read -r
     fi
 }
 
@@ -94,6 +97,24 @@ check_dependencies(){
     fi
 }
 
+is_url(){
+    url_regex='(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
+    if [[ "$1" =~ "$url_regex" ]];then
+        return 1
+    else
+        return 0
+    fi
+}
+
+is_ip4(){
+    ip4_regex="[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
+    if [[ "$1" =~ "$url_regex" ]];then
+        return 1
+    else
+        return 0
+    fi
+}
+
 cmdline(){
     arg=
     for arg
@@ -104,6 +125,9 @@ cmdline(){
             --upload)         args="${args}-u ";;
             --delete)         args="${args}-d ";;
             --list)           args="${args}-l ";;
+            --api-url)        args="${args}-a ";;
+            --tor)            args="${args}-y ";;
+            --tor-proxy)      args="${args}-z ";;
             --remove-meta)    args="${args}-e ";;
             --name)           args="${args}-n ";;
             --lifetime)       args="${args}-t ";;
@@ -113,7 +137,7 @@ cmdline(){
             --secure-url)     args="${args}-s ";;
             --config)         args="${args}-c ";;
             --curl-config)    args="${args}-C ";;
-            --api-url)        args="${args}-a ";;
+            --print-api-url)  args="${args}-p ";;
             --help)           args="${args}-h ";;
             --quiet)          args="${args}-q ";;
             *)
@@ -126,7 +150,7 @@ cmdline(){
 
     eval set -- "$args"
 
-    while getopts "xhlpd:u:c:Ct:n:o:k:sgae:" OPTION
+    while getopts "xhlpd:u:c:Ct:n:o:k:sga:e:pyz:" OPTION
     do
         case $OPTION in
          x)
@@ -144,6 +168,12 @@ cmdline(){
             ;;
          l)
             COMMAND_LIST=1
+            ;;
+         a)
+            API_URL_EXT=$OPTARG
+            if ! is_url "$API_URL_EXT";then
+                err 1 "Invalid URL"
+            fi
             ;;
          e)
             if ! which exiftool >/dev/null;then
@@ -174,10 +204,26 @@ cmdline(){
          g)
             NO_LEXER=1
             ;;
+         y)
+            USE_TOR=1
+            ;;
+         z)
+            arr=($(echo $OPTARG | tr ":" "\n"))
+            if [ ${#arr[@]} != 2 ];then
+                err 1 "Invalid proxy format. Example: '127.0.0.1:1234'"
+            fi
+
+            #if ! is_ip4 ${arr[0]};then
+            #    err 1 "Invalid IP address ${arr[0]}"
+            #fi
+
+            USE_TOR=1
+            TOR_PROXY=$OPTARG
+            ;;
          c)
             CONFIG_FILE=$OPTARG
             ;;
-         a)
+         p)
             API_URL=1
             ;;
          h)
@@ -204,14 +250,21 @@ Commands:
     -e | --remove-meta <file|dir>   Remove metadata from a regular file or directory.
                                     This requires exiftool to be installed in \$PATH.
 
-Options:
+Upload Options:
     -n | --name <name>              Name/Title for a paste
     -s | --secure-url               Create with secure URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
     -g | --no-lexer                 Don't guess a lexer for text files
-    -a | --api-url                  Return web instead of API URL
+    -p | --print-api-url            Return web instead of API URL
+
+List Options:
     -o | --offset <offset>          Pagination offset (default: 0)
     -k | --limit <limit>            Pagination limit (default: 10)
+
+General Options:
+    -y | --tor                      Enable TOR support
+    -z | --tor-proxy <ip:port>      IP and port if TOR proxy (default: 127.0.0.1:9150)
+    -a | --api-url                  Set API URL (default: https://kleber.io/api)
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
     -q | --quiet                    Suppress output
@@ -237,6 +290,14 @@ load_config(){
     fi
 
     . $config
+
+    if checkyesno "$USE_TOR";then
+        if [ "$API_URL_EXT" != 0 ];then
+            KLEBER_API_URL="$API_URL_EXT"
+        else
+            KLEBER_API_URL="$KLEBER_API_URL_TOR"
+        fi
+    fi
 }
 
 read_stdin() {
@@ -278,17 +339,26 @@ upload(){
         NO_LEXER="lexer=auto"
     fi
 
-    curl_out=$(curl --progress-bar --tlsv1 -L --write-out '%{http_code} %{url_effective}' \
-        --user-agent "$USERAGENT" \
-        --header "$auth_header" \
-        --header "Expect:" \
-        --dump-header "$headerfile" \
-        --form "$SECURE_URL" \
-        --form "lifetime=${UPLOAD_LIFETIME}" \
-        --form "$NO_LEXER" \
-        --form "${filestr}" \
-        "$request_url"
-    )
+    if checkyesno "$USE_TOR";then
+        tor_setup="--socks5-hostname ${TOR_PROXY}"
+    fi
+
+    curl_out=$(eval "curl \
+        --progress-bar \
+        --tlsv1 \
+        -L \
+        --write-out '%{http_code} %{url_effective}' \
+        --user-agent \"$USERAGENT\" \
+        --header \"$auth_header\" \
+        --header \"Expect:\" \
+        --dump-header $headerfile \
+        --form $SECURE_URL \
+        --form lifetime=${UPLOAD_LIFETIME} \
+        --form $NO_LEXER \
+        --form \"${filestr}\" \
+        $tor_setup \
+        $request_url \
+    ")
 
     status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {print $2}' ${headerfile})"
 
@@ -322,8 +392,22 @@ list(){
         limit="$PAGINATION_LIMIT"
     fi
 
+    if checkyesno "$USE_TOR";then
+        tor_setup="--socks5-hostname ${TOR_PROXY}"
+    fi
+
     request_url="${KLEBER_API_URL}/pastes?offset=${offset}&limit=${limit}"
-    curl_out=$(curl "$CURL_CONFIG_STDIN" --tlsv1 -L -s --user-agent "$USERAGENT" --header "$auth_header" "$request_url")
+    curl_out=$(eval "curl \
+        ${CURL_CONFIG_STDIN} \
+        --tlsv1 \
+        -L \
+        -s \
+        --user-agent \"${USERAGENT}\" \
+        --header \"${auth_header}\" \
+        ${tor_setup} \
+        ${request_url} \
+    ")
+    
 
     echo "$curl_out"
 }
@@ -332,9 +416,15 @@ delete(){
     shortcut=$1
     auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
     request_url="${KLEBER_API_URL}/pastes/${shortcut}"
-    status_code=$(curl "$CURL_CONFIG_STDIN" -s -X DELETE --tlsv1 --ipv4 -L \
+    status_code=$(eval "curl \
+        ${CURL_CONFIG_STDIN} \
+        -s \
+        -X DELETE \
+        --tlsv1 \
+        -L \
         --write-out '%{http_code}' \
-        --header "$auth_header" "$request_url" |grep -Po "[0-9]{3}$"
+        --header \"$auth_header\" \
+        $request_url" |grep -Po "[0-9]{3}$"
     )
 
     if [ "$status_code" -eq "204" ];then
@@ -360,11 +450,11 @@ remove_meta(){
     # A very simple exiftool wrapper that removes all metadata it knows.
     input=$1
     
-    if [ -f $input ];then
-        $EXIFTOOL -all= $input >/dev/null 2>&1
+    if [ -f "$input" ];then
+        $EXIFTOOL -all= "$input" >/dev/null 2>&1
         RET=$?
-    elif [ -d $input ];then
-        $EXIFTOOL -r -all= $input >/dev/null 2>&1
+    elif [ -d "$input" ];then
+        $EXIFTOOL -r -all= "$input" >/dev/null 2>&1
         RET=$?
     else
         err 1 "You need to supply a regular file or a directory."
