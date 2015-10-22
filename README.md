@@ -9,6 +9,16 @@ $ cd kleber-cli
 # make install
 ```
 
+### Dependencies
+
+* [curl](http://curl.haxx.se/)
+
+### Optional Dependencies
+
+* [jq](https://stedolan.github.io/jq/) (history printing)
+* [xclip](http://sourceforge.net/projects/xclip/) (copy links to clipboard)
+* [exiftool](http://www.sno.phy.queensu.ca/~phil/exiftool/) (remove metadata locally)
+
 ## Configuration
 Kleber supports configuration files. The default configuration file is located at `~/.kleberrc`. Any variables of the CLI
 can be overwritten with configuration files, so modifying the code in order to change it's behaviour is not necessary.
@@ -20,7 +30,7 @@ A minimal configuration file includes just one line: a valid API key:
 KLEBER_API_KEY=$INSERT_API_KEY_HERE
 ```
 
-As a basic configuration file, the following should be used:
+A a basic configuration file, could look like this:
 
 
 ```
@@ -92,7 +102,7 @@ This will try to list the pastes via the hidden service API. It uses the default
 $ kleber --list --tor-proxy 127.0.0.1:9151
 ```
 
-In case the API URL will change in the future, it can either be either changed set in the `~/.kleberrc` config file, or via the `--api-url` paramter:
+In case the API URL will change in the future, it can either be changed set in the `~/.kleberrc` config file, or via the `--api-url` paramter:
     
 ```
 $ kleber --list --tor --api-url https://aiojsdioiajosjdo.onion/api

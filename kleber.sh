@@ -1,33 +1,33 @@
 #!/bin/sh
 # --
-# Kleber (kleber.io) command line client
+# Kleber (kleber.io) API CLI
 #
-# Version:      v0.4.1
 # Home:         https://github.com/kleber-io/kleber-cli
 # License:      GPLv3 (see LICENSE for full license text)
-#
-#
 # Usage:        kleber --help
 # --
 set -e
-VERSION="0.5.1"
-DEBUG=0
+ARGS="$*"
+VERSION="0.5.3"
 KLEBER_WEB_URL="https://kleber.io"
 KLEBER_API_URL="${KLEBER_WEB_URL}/api"
+KLEBER_API_URL_TOR="http://6pvvph7kvxexq2e2.onion/api"
 KLEBER_MAX_SIZE=262144000
 KLEBER_RCFILE=~/.kleberrc
-ARGS="$*"
+UPLOAD_LIFETIME=604800
 USERAGENT="Kleber CLI client v${VERSION}"
 CLIPPER=
 CLIPPER_CMD=
-UPLOAD_LIFETIME=604800
+DEBUG=0
 SECURE_URL=0
 NO_LEXER=0
+EXIFTOOL=0
 API_URL=0
 API_URL_EXT=0
 USE_TOR=0
 TOR_PROXY="127.0.0.1:9150"
-EXIFTOOL=0
+JQ_BIN=0
+RAW_HISTORY=0
 TMPDIR=$(mktemp -dt kleber.XXXXXX)
 trap "rm -rf '$TMPDIR'" EXIT TERM
 
@@ -95,10 +95,14 @@ check_dependencies(){
     else
         CLIPPER=0
     fi
+
+    if which jq >/dev/null;then
+        JQ_BIN=1
+    fi
 }
 
 is_url(){
-    url_regex='(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
+    url_regex="(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]"
     if [[ "$1" =~ "$url_regex" ]];then
         return 1
     else
@@ -108,7 +112,7 @@ is_url(){
 
 is_ip4(){
     ip4_regex="[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
-    if [[ "$1" =~ "$url_regex" ]];then
+    if [[ "$1" =~ "$ip4_regex" ]];then
         return 1
     else
         return 0
@@ -134,6 +138,7 @@ cmdline(){
             --offset)         args="${args}-o ";;
             --limit)          args="${args}-k ";;
             --clipboard)      args="${args}-p ";;
+            --raw-history)    args="${args}-r ";;
             --secure-url)     args="${args}-s ";;
             --config)         args="${args}-c ";;
             --curl-config)    args="${args}-C ";;
@@ -150,7 +155,7 @@ cmdline(){
 
     eval set -- "$args"
 
-    while getopts "xhlpd:u:c:Ct:n:o:k:sga:e:pyz:" OPTION
+    while getopts "xhlpd:u:c:Ct:n:o:k:sga:e:pyz:r" OPTION
     do
         case $OPTION in
          x)
@@ -201,6 +206,9 @@ cmdline(){
          p)
             KLEBER_CLIPBOARD_DEFAULT=1
             ;;
+         r)
+            RAW_HISTORY=1
+            ;;
          g)
             NO_LEXER=1
             ;;
@@ -208,14 +216,14 @@ cmdline(){
             USE_TOR=1
             ;;
          z)
-            arr=($(echo $OPTARG | tr ":" "\n"))
+            arr=($(echo "$OPTARG" | tr ":" "\n"))
             if [ ${#arr[@]} != 2 ];then
                 err 1 "Invalid proxy format. Example: '127.0.0.1:1234'"
             fi
 
-            #if ! is_ip4 ${arr[0]};then
-            #    err 1 "Invalid IP address ${arr[0]}"
-            #fi
+            if ! is_ip4 ${arr[0]};then
+                err 1 "Invalid IP address ${arr[0]}"
+            fi
 
             USE_TOR=1
             TOR_PROXY=$OPTARG
@@ -260,6 +268,7 @@ Upload Options:
 List Options:
     -o | --offset <offset>          Pagination offset (default: 0)
     -k | --limit <limit>            Pagination limit (default: 10)
+    -r | --raw-history              Print the raw history response (without jq formatting)
 
 General Options:
     -y | --tor                      Enable TOR support
@@ -407,9 +416,15 @@ list(){
         ${tor_setup} \
         ${request_url} \
     ")
-    
 
-    echo "$curl_out"
+    if checkyesno "$JQ_BIN" && ! checkyesno "$RAW_HISTORY";then
+        echo "$curl_out" | jq ".documents[] | { shortcut, name, size, mimeType, date, "url": .url."web" }"
+    elif ! checkyesno "$JQ_BIN" && checkyesno "$RAW_HISTORY";then
+        echo "Please install jq for proper history printing."
+        echo "$curl_out"
+    else
+        echo "$curl_out"
+    fi
 }
 
 delete(){
@@ -501,8 +516,6 @@ handle_api_error(){
     esac
 }
 
-
-### Main application logic ###
 main(){
     check_euid
     check_dependencies
