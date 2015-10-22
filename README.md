@@ -16,7 +16,7 @@ $ cd kleber-cli
 ### Optional Dependencies
 
 * [jq](https://stedolan.github.io/jq/) (history printing)
-* [xclip](http://sourceforge.net/projects/xclip/) (copy links to clipboard)
+* [xclip](http://sourceforge.net/projects/xclip/) (automatically copy links to clipboard)
 * [exiftool](http://www.sno.phy.queensu.ca/~phil/exiftool/) (remove metadata locally)
 
 ## Configuration
@@ -30,7 +30,7 @@ A minimal configuration file includes just one line: a valid API key:
 KLEBER_API_KEY=$INSERT_API_KEY_HERE
 ```
 
-A a basic configuration file, could look like this:
+A basic configuration file, could look like this:
 
 
 ```
