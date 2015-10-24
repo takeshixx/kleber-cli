@@ -8,10 +8,11 @@
 # --
 set -e
 ARGS="$*"
-VERSION="0.5.3"
-KLEBER_WEB_URL="https://kleber.io"
-KLEBER_API_URL="${KLEBER_WEB_URL}/api"
-KLEBER_API_URL_TOR="http://6pvvph7kvxexq2e2.onion/api"
+VERSION="0.5.4"
+KLEBER_URL="https://kleber.io"
+KLEBER_API_URL="${KLEBER_URL}/api"
+KLEBER_URL_TOR="http://6pvvph7kvxexq2e2.onion"
+KLEBER_API_URL_TOR="${KLEBER_URL_TOR}/api"
 KLEBER_MAX_SIZE=262144000
 KLEBER_RCFILE=~/.kleberrc
 UPLOAD_LIFETIME=604800
@@ -23,7 +24,7 @@ SECURE_URL=0
 NO_LEXER=0
 EXIFTOOL=0
 API_URL=0
-API_URL_EXT=0
+URL_EXT=0
 USE_TOR=0
 TOR_PROXY="127.0.0.1:9150"
 JQ_BIN=0
@@ -142,7 +143,7 @@ cmdline(){
             --secure-url)     args="${args}-s ";;
             --config)         args="${args}-c ";;
             --curl-config)    args="${args}-C ";;
-            --print-api-url)  args="${args}-p ";;
+            --print-api-url)  args="${args}-f ";;
             --help)           args="${args}-h ";;
             --quiet)          args="${args}-q ";;
             *)
@@ -155,7 +156,7 @@ cmdline(){
 
     eval set -- "$args"
 
-    while getopts "xhlpd:u:c:Ct:n:o:k:sga:e:pyz:r" OPTION
+    while getopts "xhlpd:u:c:Ct:n:o:k:sga:e:pyz:rf" OPTION
     do
         case $OPTION in
          x)
@@ -175,9 +176,9 @@ cmdline(){
             COMMAND_LIST=1
             ;;
          a)
-            API_URL_EXT=$OPTARG
-            if ! is_url "$API_URL_EXT";then
-                err 1 "Invalid URL"
+            URL_EXT=$OPTARG
+            if ! is_url "$URL_EXT";then
+                err 1 "Invalid URL ${URL_EXT}"
             fi
             ;;
          e)
@@ -231,7 +232,7 @@ cmdline(){
          c)
             CONFIG_FILE=$OPTARG
             ;;
-         p)
+         f)
             API_URL=1
             ;;
          h)
@@ -263,7 +264,7 @@ Upload Options:
     -s | --secure-url               Create with secure URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
     -g | --no-lexer                 Don't guess a lexer for text files
-    -p | --print-api-url            Return web instead of API URL
+    -f | --print-api-url            Return API URL instead of web URL
 
 List Options:
     -o | --offset <offset>          Pagination offset (default: 0)
@@ -273,7 +274,7 @@ List Options:
 General Options:
     -y | --tor                      Enable TOR support
     -z | --tor-proxy <ip:port>      IP and port if TOR proxy (default: 127.0.0.1:9150)
-    -a | --api-url                  Set API URL (default: https://kleber.io/api)
+    -a | --url                      Set alternative URL (default: https://kleber.io/)
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
     -q | --quiet                    Suppress output
@@ -301,9 +302,11 @@ load_config(){
     . $config
 
     if checkyesno "$USE_TOR";then
-        if [ "$API_URL_EXT" != 0 ];then
-            KLEBER_API_URL="$API_URL_EXT"
+        if [ "$URL_EXT" != 0 ];then
+            KLEBER_URL="$URL_EXT"
+            KLEBER_API_URL="${URL_EXT}/api"
         else
+            KLEBER_URL="$KLEBER_URL_TOR"
             KLEBER_API_URL="$KLEBER_API_URL_TOR"
         fi
     fi

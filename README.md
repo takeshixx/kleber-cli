@@ -42,7 +42,7 @@ KLEBER_API_KEY=$INSERT_API_KEY_HERE
 ## Usage
 
 ```
-Kleber command line client
+Kleber (kleber.io) API CLI
 usage: [cat |] kleber.sh [command] [options] [file|shortcut]
 
 Commands:
@@ -57,7 +57,7 @@ Upload Options:
     -s | --secure-url               Create with secure URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
     -g | --no-lexer                 Don't guess a lexer for text files
-    -p | --print-api-url            Return web instead of API URL
+    -f | --print-api-url            Return API URL instead of web URL
 
 List Options:
     -o | --offset <offset>          Pagination offset (default: 0)
@@ -67,7 +67,7 @@ List Options:
 General Options:
     -y | --tor                      Enable TOR support
     -z | --tor-proxy <ip:port>      IP and port if TOR proxy (default: 127.0.0.1:9150)
-    -a | --api-url                  Set API URL (default: https://kleber.io/api)
+    -a | --url                      Set alternative URL (default: https://kleber.io/)
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
     -q | --quiet                    Suppress output
@@ -103,10 +103,10 @@ This will try to list the pastes via the hidden service API. It uses the default
 $ kleber --list --tor-proxy 127.0.0.1:9151
 ```
 
-In case the API URL will change in the future, it can either be changed set in the `~/.kleberrc` config file, or via the `--api-url` paramter:
+In case the API URL will change in the future, it can either be changed set in the `~/.kleberrc` config file, or via the `--url` paramter:
     
 ```
-$ kleber --list --tor --api-url https://aiojsdioiajosjdo.onion/api
+$ kleber --list --tor --url https://aiojsdioiajosjdo.onion/
 ```
 
 ### HTTP Proxy Support
