@@ -248,7 +248,7 @@ cmdline(){
 
 help() {
 	cat <<!
-Kleber command line client
+Kleber (kleber.io) API CLI
 usage: [cat |] $(basename "$0") [command] [options] [file|shortcut]
 
 Commands:

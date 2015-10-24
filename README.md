@@ -30,7 +30,7 @@ A minimal configuration file includes just one line: a valid API key:
 KLEBER_API_KEY=$INSERT_API_KEY_HERE
 ```
 
-A basic configuration file, could look like this:
+A basic configuration file could look like this:
 
 
 ```
@@ -62,6 +62,7 @@ Upload Options:
 List Options:
     -o | --offset <offset>          Pagination offset (default: 0)
     -k | --limit <limit>            Pagination limit (default: 10)
+    -r | --raw-history              Print the raw history response (without jq formatting)
 
 General Options:
     -y | --tor                      Enable TOR support
