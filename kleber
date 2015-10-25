@@ -249,7 +249,7 @@ cmdline(){
 
 help() {
 	cat <<!
-Kleber (kleber.io) API CLI
+Kleber (kleber.io) API CLI v${VERSION}
 usage: [cat |] $(basename "$0") [command] [options] [file|shortcut]
 
 Commands:
