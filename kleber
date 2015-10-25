@@ -8,7 +8,7 @@
 # --
 set -e
 ARGS="$*"
-VERSION="0.5.4"
+VERSION="0.6.1"
 KLEBER_URL="https://kleber.io"
 KLEBER_API_URL="${KLEBER_URL}/api"
 KLEBER_URL_TOR="http://6pvvph7kvxexq2e2.onion"
@@ -534,7 +534,7 @@ main(){
     elif [ "$EXIFTOOL" != 0 ];then
         remove_meta "$EXIFTOOL_INPUT"
     else
-        tmpfile=$(mktemp "${TMPDIR}/data.XXXXXX")
+        tmpfile=$(mktemp "${TMPDIR}/cli.XXXXXX")
         read_stdin "$tmpfile"
         upload "$tmpfile"
     fi
