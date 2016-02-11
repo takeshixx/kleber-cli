@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # --
 # Kleber (kleber.io) API CLI
 #
@@ -17,8 +17,6 @@ KLEBER_MAX_SIZE=262144000
 KLEBER_RCFILE=~/.kleberrc
 UPLOAD_LIFETIME=604800
 USERAGENT="Kleber CLI client v${VERSION}"
-CLIPPER=
-CLIPPER_CMD=
 DEBUG=0
 SECURE_URL=0
 NO_LEXER=0
@@ -27,10 +25,19 @@ API_URL=0
 URL_EXT=0
 USE_TOR=0
 TOR_PROXY="127.0.0.1:9150"
+XCLIP_BIN=0
+EXIFTOOL_BIN=0
 JQ_BIN=0
+OPENSSL_BIN=0
+SCREENSHOOTER=0
 RAW_HISTORY=0
+PAGINATION_OFFSET=0
+PAGINATION_LIMIT=10
+ENCRYPT_FILE=0
+DECRYPT_FILE=0
+CRYPT_KEY=0
 TMPDIR=$(mktemp -dt kleber.XXXXXX)
-trap "rm -rf '$TMPDIR'" EXIT TERM
+trap "rm -rf ${TMPDIR}" EXIT TERM
 
 err(){
     exitval=$1
@@ -62,7 +69,7 @@ checkyesno(){
         return 1
     fi
     eval _value=\$${1}
-    debug "checkyesno: $1 is set to $_value."
+    debug "checkyesno: ${1} is set to ${_value}."
     case $_value in
         #   "yes", "true", "on", or "1"
     [Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|1)
@@ -79,7 +86,7 @@ checkyesno(){
 }
 
 check_euid(){
-    if [ "$(id -u)" = 0 ]; then
+    if [ "$(id -u)" -eq 0 ]; then
       warn "You should not run this with superuser privileges!"
       read -r
     fi
@@ -91,29 +98,46 @@ check_dependencies(){
     fi
 
     if which xclip >/dev/null;then
-        CLIPPER=1
-        CLIPPER_CMD="xclip -selection clipboard"
-    else
-        CLIPPER=0
+        XCLIP_BIN=1
+    fi
+
+    if which exiftool >/dev/null;then
+        EXIFTOOL_BIN=1
     fi
 
     if which jq >/dev/null;then
         JQ_BIN=1
     fi
+
+    if which openssl >/dev/null;then
+        OPENSSL_BIN=1
+    fi
+
+    if which import >/dev/null;then
+        SCREENSHOOTER=1
+    fi
 }
 
-is_url(){
-    url_regex="(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]"
-    if [[ "$1" =~ "$url_regex" ]];then
+check_is_url(){
+    local url_regex="(https?|ftp|file)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]"
+    if [[ $1 =~ $url_regex ]];then
         return 1
     else
         return 0
     fi
 }
 
-is_ip4(){
-    ip4_regex="[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
-    if [[ "$1" =~ "$ip4_regex" ]];then
+check_is_port(){
+    if [ "$1" -gt 1 ] && [ "$1" -lt 65536 ];then
+        return 1
+    else
+        return 0
+    fi
+}
+
+check_is_ip4(){
+    local ip4_regex="[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
+    if [[ $1 =~ $ip4_regex ]];then
         return 1
     else
         return 0
@@ -131,13 +155,14 @@ cmdline(){
             --delete)         args="${args}-d ";;
             --list)           args="${args}-l ";;
             --api-url)        args="${args}-a ";;
+            --upload-screenshot) args="${args}-b";;
             --tor)            args="${args}-y ";;
             --tor-proxy)      args="${args}-z ";;
             --remove-meta)    args="${args}-e ";;
             --name)           args="${args}-n ";;
             --lifetime)       args="${args}-t ";;
-            --offset)         args="${args}-o ";;
-            --limit)          args="${args}-k ";;
+            --offset)         args="${args}-O ";;
+            --limit)          args="${args}-L ";;
             --clipboard)      args="${args}-p ";;
             --raw-history)    args="${args}-r ";;
             --secure-url)     args="${args}-s ";;
@@ -147,7 +172,7 @@ cmdline(){
             --help)           args="${args}-h ";;
             --quiet)          args="${args}-q ";;
             *)
-                if [ ! "$(expr substr "${arg}" 0 1)" = "-" ];then
+                if [ ! "${arg}:0:1" = "-" ];then
                     delim="\""
                 fi
                 args="${args}${delim}${arg}${delim} ";;
@@ -156,7 +181,7 @@ cmdline(){
 
     eval set -- "$args"
 
-    while getopts "xhlpd:u:c:Ct:n:o:k:sga:e:pyz:rf" OPTION
+    while getopts "xhlpd:u:c:Ct:n:O:L:sga:e:pyz:rfEDb" OPTION
     do
         case $OPTION in
          x)
@@ -177,16 +202,19 @@ cmdline(){
             ;;
          a)
             URL_EXT=$OPTARG
-            if ! is_url "$URL_EXT";then
+            if ! check_is_url "$URL_EXT";then
                 err 1 "Invalid URL ${URL_EXT}"
             fi
             ;;
+         b)
+            COMMAND_UPLOAD_SCREENSHOT=1
+            ;;
          e)
-            if ! which exiftool >/dev/null;then
+            if ! checkyesno "$EXIFTOOL_BIN";then
                 err 1 "exiftool not found"
             fi
 
-            EXIFTOOL=$(which exiftool)
+            EXIFTOOL_BIN=1
             EXIFTOOL_INPUT=$OPTARG
             ;;
          n)
@@ -195,10 +223,10 @@ cmdline(){
          t)
             UPLOAD_LIFETIME=$OPTARG
             ;;
-         o)
+         O)
             PAGINATION_OFFSET=$OPTARG
             ;;
-         k)
+         L)
             PAGINATION_LIMIT=$OPTARG
             ;;
          s)
@@ -217,17 +245,41 @@ cmdline(){
             USE_TOR=1
             ;;
          z)
-            arr=($(echo "$OPTARG" | tr ":" "\n"))
-            if [ ${#arr[@]} != 2 ];then
+            OIFS=$IFS
+            IFS=":"
+            read -r host port <<EOF
+            $OPTARG
+EOF
+            IFS=$OIFS
+
+            if [ -z "$host" ] || [ -z "$port" ];then
                 err 1 "Invalid proxy format. Example: '127.0.0.1:1234'"
             fi
 
-            if ! is_ip4 ${arr[0]};then
-                err 1 "Invalid IP address ${arr[0]}"
+            if ! check_is_ip4 "$host";then
+                err 1 "Invalid IP address ${host}"
+            fi
+
+            if ! check_is_port "$port";then
+                err 1 "Invalid port ${port}"
             fi
 
             USE_TOR=1
-            TOR_PROXY=$OPTARG
+            TOR_PROXY="${host}:${port}"
+            ;;
+         E)
+            if ! checkyesno "$OPENSSL_BIN";then
+                err 1 "openssl is required for encryption/decryption of files."
+            fi
+
+            ENCRYPT_FILE=1
+            ;;
+         D)
+            if ! checkyesno "$OPENSSL_BIN";then
+                err 1 "openssl is required for encryption/decryption of files."
+            fi
+
+            DECRYPT_FILE=1
             ;;
          c)
             CONFIG_FILE=$OPTARG
@@ -254,17 +306,26 @@ usage: [cat |] $(basename "$0") [command] [options] [file|shortcut]
 
 Commands:
     -u | --upload <file>            Upload a file
+    -g | --get <file>               Get a file
     -d | --delete <shortcut>        Delete a paste/file
     -l | --list                     Print upload history
     -e | --remove-meta <file|dir>   Remove metadata from a regular file or directory.
                                     This requires exiftool to be installed in \$PATH.
+    -b | --upload-screenshot        Take a screenshot and upload it.
 
 Upload Options:
     -n | --name <name>              Name/Title for a paste
     -s | --secure-url               Create with secure URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
-    -g | --no-lexer                 Don't guess a lexer for text files
+    -g | --no-lexer                 Don\'t guess a lexer for text files
     -f | --print-api-url            Return API URL instead of web URL
+    -E | --encrypt                  Encrypt the file before upload
+
+Get Options:
+    -o | --output <location>        Output location (default: current directory)
+
+Encryption/Decryption Options:
+    -k | --key <key>                Decryption key
 
 List Options:
     -o | --offset <offset>          Pagination offset (default: 0)
@@ -313,180 +374,48 @@ load_config(){
 }
 
 read_stdin() {
-    temp_file=$1
+    local temp_file=$1
 	if tty -s; then
         printf "%s\n" "^C to exit, ^D to send"
 	fi
 	cat > "$temp_file"
 }
 
-upload(){
-    file=$1
-    auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
-    request_url="${KLEBER_API_URL}/pastes"
-    headerfile=$(mktemp "${TMPDIR}/header.XXXXXX")
-    filestr="file=@${file}"
-
-    if [ ! -r "$file" ];then
-        err 1 "Cannot read file ${file}"
-    elif [ "$(stat -c %s "${file}")" -eq 0 ];then
-        err 1 "File size is 0"
-    elif [ "$(stat -c %s "${file}")" -gt $KLEBER_MAX_SIZE ];then
-        err 1 "File size exceeds maximum size"
-    fi
-
-    if [ -n "$UPLOAD_NAME" ];then
-        filestr="${filestr};filename=${UPLOAD_NAME}"
-    fi
-
-    if checkyesno "$SECURE_URL";then
-        SECURE_URL="secureUrl=true"
-    else
-        SECURE_URL="secureUrl=false"
-    fi
-
-    if checkyesno "$NO_LEXER";then
-        NO_LEXER="lexer="
-    else
-        NO_LEXER="lexer=auto"
-    fi
-
-    if checkyesno "$USE_TOR";then
-        tor_setup="--socks5-hostname ${TOR_PROXY}"
-    fi
-
-    curl_out=$(eval "curl \
-        --progress-bar \
-        --tlsv1 \
-        -L \
-        --write-out '%{http_code} %{url_effective}' \
-        --user-agent \"$USERAGENT\" \
-        --header \"$auth_header\" \
-        --header \"Expect:\" \
-        --dump-header $headerfile \
-        --form $SECURE_URL \
-        --form lifetime=${UPLOAD_LIFETIME} \
-        --form $NO_LEXER \
-        --form \"${filestr}\" \
-        $tor_setup \
-        $request_url \
-    ")
-
-    status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {print $2}' ${headerfile})"
-
-    if [ -n "$status_code" ] && [ "$status_code" = "201" ];then
-        debug "Upload successful"
-        location="$(awk '/Location: (.*?)/ {print $2}' ${headerfile})"
-
-        if checkyesno "$API_URL";then
-            shortcut="$(echo $location | awk -F/ '{print $4}')"
-            location="${KLEBER_API_URL}/pastes/${shortcut}"
-        fi
-
-        shortcut="$(basename "$location")"
-
-        info "${location}"
-        copy_to_clipper "$location"
-    else
-        handle_api_error "$status_code"
-    fi
-}
-
-list(){
-    offset="0"
-    limit="10"
-    auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
-
-    if [ -n "$PAGINATION_OFFSET" ];then
-        offset="$PAGINATION_OFFSET"
-    fi
-    if [ -n "$PAGINATION_LIMIT" ];then
-        limit="$PAGINATION_LIMIT"
-    fi
-
-    if checkyesno "$USE_TOR";then
-        tor_setup="--socks5-hostname ${TOR_PROXY}"
-    fi
-
-    request_url="${KLEBER_API_URL}/pastes?offset=${offset}&limit=${limit}"
-    curl_out=$(eval "curl \
-        ${CURL_CONFIG_STDIN} \
-        --tlsv1 \
-        -L \
-        -s \
-        --user-agent \"${USERAGENT}\" \
-        --header \"${auth_header}\" \
-        ${tor_setup} \
-        ${request_url} \
-    ")
-
-    if checkyesno "$JQ_BIN" && ! checkyesno "$RAW_HISTORY";then
-        echo "$curl_out" | jq ".documents[] | { shortcut, name, size, mimeType, date, "url": .url."web" }"
-    elif ! checkyesno "$JQ_BIN" && checkyesno "$RAW_HISTORY";then
-        echo "Please install jq for proper history printing."
-        echo "$curl_out"
-    else
-        echo "$curl_out"
-    fi
-}
-
-delete(){
-    shortcut=$1
-    auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
-    request_url="${KLEBER_API_URL}/pastes/${shortcut}"
-    status_code=$(eval "curl \
-        ${CURL_CONFIG_STDIN} \
-        -s \
-        -X DELETE \
-        --tlsv1 \
-        -L \
-        --write-out '%{http_code}' \
-        --header \"$auth_header\" \
-        $request_url" |grep -Po "[0-9]{3}$"
-    )
-
-    if [ "$status_code" -eq "204" ];then
-        debug "Upload successfully deleted"
-    else
-        handle_api_error "$status_code"
-    fi
-}
-
 copy_to_clipper(){
-    location=$1
+    local location=$1
 
     if checkyesno "$KLEBER_CLIPBOARD_DEFAULT";then
         if checkyesno "$CLIPPER";then
-            echo "$location" | eval "${CLIPPER_CMD}" || return 1
+            echo "${location}" | eval "${CLIPPER_CMD}" || return 1
         else
             warn "xclip not found"
         fi
     fi
 }
 
-remove_meta(){
-    # A very simple exiftool wrapper that removes all metadata it knows.
-    input=$1
-    
-    if [ -f "$input" ];then
-        $EXIFTOOL -all= "$input" >/dev/null 2>&1
-        RET=$?
-    elif [ -d "$input" ];then
-        $EXIFTOOL -r -all= "$input" >/dev/null 2>&1
-        RET=$?
-    else
-        err 1 "You need to supply a regular file or a directory."
-    fi
+gen_encryption_key(){
+    local CRYPT_KEY=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | openssl base64) 
+}
 
-    if [ "$RET" = 0 ];then
-        info "Metadata removed"
-    else
-        err 1 "Removing metadata failed!"
-    fi
+encrypt_file(){
+    local file=$1
+    local out_file=$2
+
+    openssl aes-256-cbc -e -in "$file" -out "$out_file" -k "$CRYPT_KEY"
+    return "$?"
+}
+
+decrypt_file(){
+    local file=$1
+    local key=$2
+    local out_file=$file
+
+    openssl aes-256-cbc -d -in "$file" -out "$file"
+    return "$?"
 }
 
 handle_api_error(){
-    status_code=$1
+    local status_code=$1
 
     case $status_code in
         400)
@@ -519,6 +448,199 @@ handle_api_error(){
     esac
 }
 
+cmd_upload(){
+    local file=$1
+    local auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
+    local request_url="${KLEBER_API_URL}/pastes"
+    local headerfile=$(mktemp "${TMPDIR}/header.XXXXXX")
+
+    if [ ! -r "$file" ];then
+        err 1 "Cannot read file ${file}"
+    elif [ "$(stat -c %s "${file}")" -eq 0 ];then
+        err 1 "File size is 0"
+    elif [ "$(stat -c %s "${file}")" -gt $KLEBER_MAX_SIZE ];then
+        err 1 "File size exceeds maximum size"
+    fi
+
+    if checkyesno "$ENCRYPT_FILE";then
+        if [ "$CRYPT_KEY" = 0 ];then
+            gen_encryption_key
+        fi
+
+        out_file="${TMPDIR}/${file}.enc"
+        touch "$out_file"
+        encrypt_file "$file" "$out_file"
+        file=$out_file
+        encrypt_param="--form isEncrypted=true"
+    fi
+
+    local filestr="file=@${file}"
+
+    if [ -n "$UPLOAD_NAME" ];then
+        filestr="${filestr};filename=${UPLOAD_NAME}"
+    fi
+
+    if checkyesno "$SECURE_URL";then
+        SECURE_URL="secureUrl=true"
+    else
+        SECURE_URL="secureUrl=false"
+    fi
+
+    if checkyesno "$NO_LEXER";then
+        NO_LEXER="lexer="
+    else
+        NO_LEXER="lexer=auto"
+    fi
+
+    if checkyesno "$USE_TOR";then
+        tor_setup="--socks5-hostname ${TOR_PROXY}"
+    fi
+
+    curl_out=$(eval "curl \
+        --progress-bar \
+        --tlsv1 \
+        -L \
+        --write-out '%{http_code} %{url_effective}' \
+        --user-agent \"${USERAGENT}\" \
+        --header \"${auth_header}\" \
+        --header \"Expect:\" \
+        --dump-header $headerfile \
+        --form ${SECURE_URL} \
+        --form lifetime=${UPLOAD_LIFETIME} \
+        --form ${NO_LEXER} \
+        --form \"${filestr}\" \
+        ${encrypt_param} \
+        ${tor_setup} \
+        ${request_url} \
+    ")
+
+    local status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {print $2}' ${headerfile})"
+
+    if [ -n "$status_code" ] && [ "$status_code" = "201" ];then
+        debug "Upload successful"
+        location="$(awk '/Location: (.*?)/ {print $2}' ${headerfile} | tr -d '\r')"
+
+        if checkyesno "$API_URL";then
+            shortcut="$(echo $location | awk -F/ '{print $4}')"
+            location="${KLEBER_API_URL}/pastes/${shortcut}"
+        fi
+
+        shortcut="$(basename "$location")"
+
+        if checkyesno "$ENCRYPT_FILE";then
+            location="${location}/${CRYPT_KEY}"
+        fi
+
+        info "$location"
+        copy_to_clipper "$location"
+    else
+        handle_api_error "$status_code"
+    fi
+}
+
+cmd_get(){
+    local url=$1
+
+    if check_is_url "$url";then
+        a=b
+    fi
+
+    local curl_out=$(eval "curl \
+        -s \
+        -v \
+        -O \
+        ${API_URL}/pastes/${url} \
+    ")
+
+    local file_name="$(echo $curl_out | grep -oE 'filename=.*$' | sed -e 's/filename=//')"
+
+    if checkyesno "$DECRYPT_FILE";then
+      a=b  
+    fi
+}
+
+cmd_list(){
+    local auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
+
+    if checkyesno "$USE_TOR";then
+        tor_setup="--socks5-hostname ${TOR_PROXY}"
+    fi
+
+    local request_url="${KLEBER_API_URL}/pastes?offset=${PAGINATION_OFFSET}\&limit=${PAGINATION_LIMIT}"
+    curl_out=$(eval "curl \
+        ${CURL_CONFIG_STDIN} \
+        --tlsv1 \
+        -L \
+        -s \
+        --user-agent \"${USERAGENT}\" \
+        --header \"${auth_header}\" \
+        ${tor_setup} \
+        ${request_url} \
+    ")
+
+    if checkyesno "$JQ_BIN" && ! checkyesno "$RAW_HISTORY";then
+        echo "$curl_out" | jq ".documents[] | { shortcut, name, size, mimeType, date, "url": .url."web" }"
+    elif ! checkyesno "$JQ_BIN" && checkyesno "$RAW_HISTORY";then
+        echo "Please install jq for proper history printing."
+        echo "$curl_out"
+    else
+        echo "$curl_out"
+    fi
+}
+
+cmd_delete(){
+    local shortcut=$1
+    local auth_header="X-Kleber-API-Auth: ${KLEBER_API_KEY}"
+    local request_url="${KLEBER_API_URL}/pastes/${shortcut}"
+    local status_code=$(eval "curl \
+        ${CURL_CONFIG_STDIN} \
+        -s \
+        -X DELETE \
+        --tlsv1 \
+        -L \
+        --write-out '%{http_code}' \
+        --header \"$auth_header\" \
+        $request_url" |grep -Po "[0-9]{3}$"
+    )
+
+    if [ "$status_code" -eq "204" ];then
+        debug "Upload successfully deleted"
+    else
+        handle_api_error "$status_code"
+    fi
+}
+
+cmd_remove_meta(){
+    # A very simple exiftool wrapper that removes all metadata it knows.
+    local input=$1
+    
+    if [ -f "$input" ];then
+        exiftoolL -all= "$input" >/dev/null 2>&1
+        RET=$?
+    elif [ -d "$input" ];then
+        exiftool -r -all= "$input" >/dev/null 2>&1
+        RET=$?
+    else
+        err 1 "You need to supply a regular file or a directory."
+    fi
+
+    if [ "$RET" = 0 ];then
+        info "Metadata removed"
+    else
+        err 1 "Removing metadata failed!"
+    fi
+}
+
+cmd_upload_screenshot(){
+    if ! checkyesno $SCREENSHOOTER;then
+        err "import utility not found!"
+    fi
+
+    local tmpfile=$(mktemp "${TMPDIR}/cli.XXXXXX.png")
+    import "$tmpfile"
+    cmd_upload "$tmpfile"
+}
+
 main(){
     check_euid
     check_dependencies
@@ -526,17 +648,19 @@ main(){
     load_config
 
     if [ -n "$COMMAND_UPLOAD" ];then
-        upload "$COMMAND_UPLOAD"
+        cmd_upload "$COMMAND_UPLOAD"
     elif [ -n "$COMMAND_DELETE" ];then
-        delete "$COMMAND_DELETE"
+        cmd_delete "$COMMAND_DELETE"
     elif [ -n "$COMMAND_LIST" ];then
-        list
+        cmd_list
+    elif [ -n "$COMMAND_UPLOAD_SCREENSHOT" ];then
+        cmd_upload_screenshot
     elif [ "$EXIFTOOL" != 0 ];then
-        remove_meta "$EXIFTOOL_INPUT"
+        cmd_remove_meta "$EXIFTOOL_INPUT"
     else
         tmpfile=$(mktemp "${TMPDIR}/cli.XXXXXX")
         read_stdin "$tmpfile"
-        upload "$tmpfile"
+        cmd_upload "$tmpfile"
     fi
 
     return 0
