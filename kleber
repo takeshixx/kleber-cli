@@ -385,8 +385,8 @@ copy_to_clipper(){
     local location=$1
 
     if checkyesno "$KLEBER_CLIPBOARD_DEFAULT";then
-        if checkyesno "$CLIPPER";then
-            echo "${location}" | eval "${CLIPPER_CMD}" || return 1
+        if checkyesno "$XCLIP_BIN";then
+            echo "${location}" | xclip -selection clipboard 
         else
             warn "xclip not found"
         fi
