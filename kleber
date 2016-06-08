@@ -514,11 +514,11 @@ cmd_upload(){
         ${request_url} \
     ")
 
-    local status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {print $2}' ${headerfile})"
+    local status_code="$(awk '/^HTTP\/1.1\s[0-9]{3}\s/ {a=$2} END{print a}' ${headerfile})"
 
     if [ -n "$status_code" ] && [ "$status_code" = "201" ];then
         debug "Upload successful"
-        location="$(awk '/Location: (.*?)/ {print $2}' ${headerfile} | tr -d '\r')"
+        location="$(awk '/Location: (.*?)/ {a=$2} END{print a}' ${headerfile} | tr -d '\r')"
 
         if checkyesno "$API_URL";then
             shortcut="$(echo $location | awk -F/ '{print $4}')"
