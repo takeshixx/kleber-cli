@@ -192,16 +192,16 @@ cmdline(){
             QUIET=1
             ;;
          u)
-            COMMAND_UPLOAD=$OPTARG
+            COMMAND_UPLOAD="$OPTARG"
             ;;
          d)
-            COMMAND_DELETE=$OPTARG
+            COMMAND_DELETE="$OPTARG"
             ;;
          l)
             COMMAND_LIST=1
             ;;
          a)
-            URL_EXT=$OPTARG
+            URL_EXT="$OPTARG"
             if ! check_is_url "$URL_EXT";then
                 err 1 "Invalid URL ${URL_EXT}"
             fi
@@ -218,7 +218,7 @@ cmdline(){
             EXIFTOOL_INPUT=$OPTARG
             ;;
          n)
-            UPLOAD_NAME=$OPTARG
+            UPLOAD_NAME="$OPTARG"
             ;;
          t)
             UPLOAD_LIFETIME=$OPTARG
@@ -335,6 +335,7 @@ List Options:
 General Options:
     -y | --tor                      Enable TOR support
     -z | --tor-proxy <ip:port>      IP and port if TOR proxy (default: 127.0.0.1:9150)
+    -p | --clipboard                Add document link to clipboard
     -a | --url                      Set alternative URL (default: https://kleber.io/)
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
@@ -637,7 +638,7 @@ cmd_upload_screenshot(){
     fi
 
     local tmpfile=$(mktemp "${TMPDIR}/cli.XXXXXX.png")
-    import "$tmpfile"
+    import -border "$tmpfile"
     cmd_upload "$tmpfile"
 }
 
