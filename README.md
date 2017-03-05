@@ -12,10 +12,10 @@ $ cd kleber-cli
 ### Dependencies
 
 * [curl](http://curl.haxx.se/)
+* [jq](https://stedolan.github.io/jq/) (history printing)
 
 ### Optional Dependencies
 
-* [jq](https://stedolan.github.io/jq/) (history printing)
 * [xclip](http://sourceforge.net/projects/xclip/) (automatically copy links to clipboard)
 * [exiftool](http://www.sno.phy.queensu.ca/~phil/exiftool/) (remove metadata locally)
 
@@ -35,38 +35,40 @@ A basic configuration file could look like this:
 
 ```
 KLEBER_API_URL=https://kleber.io/api
-KLEBER_API_URL_TOR=http://6pvvph7kvxexq2e2.onion/api
 KLEBER_API_KEY=$INSERT_API_KEY_HERE
 ```
 
 ## Usage
 
 ```
-Kleber (kleber.io) API CLI
-usage: [cat |] kleber.sh [command] [options] [file|shortcut]
+Kleber (kleber.io) API CLI v0.7.0
+usage: [cat |] kleber [command] [options] [file|shortcut]
 
 Commands:
     -u | --upload <file>            Upload a file
+    -g | --get <file>               Get a file
     -d | --delete <shortcut>        Delete a paste/file
     -l | --list                     Print upload history
     -e | --remove-meta <file|dir>   Remove metadata from a regular file or directory.
                                     This requires exiftool to be installed in $PATH.
+    -b | --upload-screenshot        Take a screenshot and upload it.
 
 Upload Options:
     -n | --name <name>              Name/Title for a paste
     -s | --secure-url               Create with secure URL
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
-    -g | --no-lexer                 Don't guess a lexer for text files
     -f | --print-api-url            Return API URL instead of web URL
+    -w | --password                 Protect upload with password
+
+Get Options:
+    -o | --output <location>        Output location (default: current directory)
 
 List Options:
     -o | --offset <offset>          Pagination offset (default: 0)
     -k | --limit <limit>            Pagination limit (default: 10)
-    -r | --raw-history              Print the raw history response (without jq formatting)
 
 General Options:
-    -y | --tor                      Enable TOR support
-    -z | --tor-proxy <ip:port>      IP and port if TOR proxy (default: 127.0.0.1:9150)
+    -p | --clipboard                Add document link to clipboard
     -a | --url                      Set alternative URL (default: https://kleber.io/)
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
     -C | --curl-config              Read curl config from stdin
@@ -88,26 +90,6 @@ $ cat /bin/pwd | kleber -n pwd
 ```
 
 The name (-n) is optional.
-
-### Using the Hidden Service API via TOR
-
-The CLI also works for the hidden service API accessible via the TOR network:
-
-```
-$ kleber --list --tor
-```
-
-This will try to list the pastes via the hidden service API. It uses the default TOR proxy settings `localhost:9150`. This can be changed:
-
-```
-$ kleber --list --tor-proxy 127.0.0.1:9151
-```
-
-In case the API URL will change in the future, it can either be changed set in the `~/.kleberrc` config file, or via the `--url` paramter:
-    
-```
-$ kleber --list --tor --url https://aiojsdioiajosjdo.onion/
-```
 
 ### HTTP Proxy Support
 
