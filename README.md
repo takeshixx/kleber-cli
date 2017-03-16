@@ -9,6 +9,10 @@ $ cd kleber-cli
 # make install
 ```
 
+### Packages
+
+There is a [kleber-git](https://aur.archlinux.org/packages/kleber-git/) package in the Arch User Repository (AUR).
+
 ### Dependencies
 
 * [curl](http://curl.haxx.se/)
