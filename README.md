@@ -30,18 +30,10 @@ A minimal configuration file includes just one line: a valid API key:
 KLEBER_API_KEY=$INSERT_API_KEY_HERE
 ```
 
-A basic configuration file could look like this:
-
-
-```
-KLEBER_API_URL=https://kleber.io/api
-KLEBER_API_KEY=$INSERT_API_KEY_HERE
-```
-
 ## Usage
 
 ```
-Kleber (kleber.io) API CLI v0.7.0
+Kleber (kleber.io) API CLI v0.7.2
 usage: [cat |] kleber [command] [options] [file|shortcut]
 
 Commands:
@@ -71,7 +63,6 @@ General Options:
     -p | --clipboard                Add document link to clipboard
     -a | --url                      Set alternative URL (default: https://kleber.io/)
     -c | --config                   Provide a custom config file (default: ~/.kleberrc)
-    -C | --curl-config              Read curl config from stdin
     -q | --quiet                    Suppress output
     -x | --debug                    Show debug output
     -h | --help                     Show this help
