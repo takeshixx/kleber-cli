@@ -357,6 +357,9 @@ cmd_upload(){
             err 1 "Could not extract location"
         fi
         local upload_url="${KLEBER_URL}/${location}"
+        if [ -n "$UPLOAD_PASSWORD" ];then
+            upload_url="${upload_url}?password=${UPLOAD_PASSWORD}"
+        fi
         echo $upload_url
         copy_to_clipper "$upload_url"
     else
