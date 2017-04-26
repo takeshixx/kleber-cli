@@ -350,7 +350,7 @@ cmd_upload(){
         --form \"${filestr}\" \
         --dump-header $headerfile \
         ${request_url}")
-    local status_code="$(cat ${headerfile} | cut -d\  -f2 )"
+    local status_code="$(cat ${headerfile} | head -n 1 | cut -d\  -f2 )"
     if [ -z $status_code ];then
         err 1 "Connection to Kleber failed"
     fi
