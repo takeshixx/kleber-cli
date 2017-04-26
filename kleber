@@ -351,6 +351,9 @@ cmd_upload(){
         --dump-header $headerfile \
         ${request_url}")
     local status_code="$(awk '/^HTTP\/1.[0-1]\s[0-9]{3}\s/ {a=$2} END{print a}' ${headerfile})"
+    if [ -z $status_code ];then
+        err 1 "Connection to Kleber failed"
+    fi
     if [ $status_code -eq 201 ];then
         local location="$(echo ${curl_out} | jq -r .shortcut)"
         if [ -z $location ];then
