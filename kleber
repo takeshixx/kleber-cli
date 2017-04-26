@@ -248,7 +248,6 @@ usage: [cat |] $(basename "$0") [command] [options] [file|shortcut]
 
 Commands:
     -u | --upload <file>            Upload a file
-    -g | --get <file>               Get a file
     -d | --delete <shortcut>        Delete a paste/file
     -l | --list                     Print upload history
     -e | --remove-meta <file|dir>   Remove metadata from a regular file or directory.
@@ -261,9 +260,6 @@ Upload Options:
     -t | --lifetime <lifetime>      Set upload lifetimes (in seconds)
     -f | --print-api-url            Return API URL instead of web URL
     -w | --password                 Protect upload with password
-
-Get Options:
-    -o | --output <location>        Output location (default: current directory)
 
 List Options:
     -o | --offset <offset>          Pagination offset (default: 0)
@@ -367,22 +363,6 @@ cmd_upload(){
         copy_to_clipper "$upload_url"
     else
         echo $curl_out | jq -r ".detail"
-    fi
-}
-
-cmd_get(){
-    local url=$1
-    if check_is_url "$url";then
-        a=b
-    fi
-    local curl_out=$(eval "curl \
-        -s \
-        -v \
-        -O \
-        ${API_URL}/${url}")
-    local file_name="$(echo $curl_out | grep -oE 'filename=.*$' | sed -e 's/filename=//')"
-    if checkyesno "$DECRYPT_FILE";then
-      a=b  
     fi
 }
 
