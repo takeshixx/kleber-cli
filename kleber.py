@@ -10,7 +10,7 @@ import progressbar
 import requests_toolbelt
 
 __version__ = 'v2.0.1'
-__license__ = 'MIT'
+__license__ = 'BSD-3-Clause'
 verbose_log_format = '[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s'
 
 LOGGER = logging.getLogger()
