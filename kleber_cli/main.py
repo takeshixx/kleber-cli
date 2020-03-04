@@ -47,7 +47,7 @@ def main():
         print(upload_list)
     elif args.version:
         print(__version__)
-    elif args.infile or not any([args.cmd_list]):
+    elif args.infile:
         if args.config_file and os.path.isfile(args.config_file):
             kleber = KleberClient(rc_file=args.config_file)
         else:
