@@ -24,9 +24,9 @@ ARGS.add_argument('-p', '--password', action='store', dest='password', metavar='
                   default='', help='password for the file/paste')
 ARGS.add_argument('-t', '--lifetime', action='store', dest='lifetime', metavar='lifetime',
                   type=int, default=604800, help='lifetime of the uploaded file/paste (default: 604800)')
-ARGS.add_argument('-d', '--clipboard', action='store_true', dest='clipboard',
+ARGS.add_argument('-c', '--clipboard', action='store_true', dest='clipboard',
                   default=False, help='add document link to clipboard')
-ARGS.add_argument('-c', '--config', action='store', dest='config_file', metavar='filename',
+ARGS.add_argument('--config', action='store', dest='config_file', metavar='filename',
                   default='', help='provide a custom config file (default: ~/.kleberrc)')
 ARGS.add_argument('-o', '--page', action='store', dest='list_page', metavar='page',
                   type=int, default=1, help='pagination page (default: 1)')
