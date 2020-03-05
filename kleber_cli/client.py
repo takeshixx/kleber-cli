@@ -9,6 +9,7 @@ import requests_toolbelt
 
 from . import __version__
 
+progressbar.streams.wrap_stderr()
 LOGGER = logging.getLogger()
 
 

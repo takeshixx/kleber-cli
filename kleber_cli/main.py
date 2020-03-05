@@ -61,7 +61,7 @@ def main():
                 LOGGER.warning('pyperclip module is not installed')
             else:
                 pyperclip.copy(url)
-        LOGGER.info(url)
+        print(url)
     else:
         ARGS.print_help()
 
